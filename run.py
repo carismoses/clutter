@@ -34,7 +34,9 @@ def main(args):
     for tx in range(0, args.num_trials):
         print(f"\nStarting trial {tx}\n")
         if args.task == 'stacking':
-            tower = sample_random_tower(blocks)
+            n_blocks = np.random.randint(2, min(args.num_blocks + 1, 5))
+            tower_blocks = np.random.choice(blocks, n_blocks, replace=False)
+            tower = sample_random_tower(tower_blocks)
             agent.simulate_tower(tower,
                                  real=args.real,
                                  base_xy=(0.5, -0.3),
@@ -53,7 +55,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--task', default='clutter', choices=['clutter', 'stacking'], type=str)
     parser.add_argument('--plot', action='store_true')
-    parser.add_argument('--num-blocks', type=int, default=4)
+    parser.add_argument('--num-blocks', type=int, default=10)
     parser.add_argument('--num-trials', type=int, default=100)
     parser.add_argument('--save-tower', action='store_true')
     parser.add_argument('--use-planning-server', action='store_true')

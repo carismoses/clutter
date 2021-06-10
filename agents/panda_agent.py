@@ -8,14 +8,14 @@ from copy import deepcopy
 
 from block_utils import get_adversarial_blocks, rotation_group, ZERO_POS, \
                         Quaternion, get_rotated_block, Pose, add_noise, \
-                        Environment, Position, World
+                        Environment, Position, World, all_rotations
 from pddlstream.utils import INF
 from pybullet_utils import transformation
 import tamp.primitives
 from tamp.misc import setup_panda_world, get_pddl_block_lookup, \
-                      print_planning_problem, ExecuteActions, ExecutionFailure
+                      print_planning_problem, ExecuteActions, ExecutionFailure, create_pb_robot_urdf
 from tamp.pddlstream_utils import get_pddlstream_info, pddlstream_plan
-
+all_rotations = all_rotations()
 
 class PandaAgent:
     def __init__(self, blocks, noise=0.00005, block_init_xy_poses=None,
@@ -47,13 +47,13 @@ class PandaAgent:
         self.alternate_orientations = alternate_orientations
 
         # Setup PyBullet instance to run in the background and handle planning/collision checking.
-        self._planning_client_id = pb_robot.utils.connect(use_gui=False)
+        self._planning_client_id = pb_robot.utils.connect(use_gui=True)
         self.plan()
         pb_robot.utils.set_default_camera()
         self.robot = pb_robot.panda.Panda()
         self.robot.arm.hand.Open()
         self.belief_blocks = blocks
-        self.pddl_blocks, self.platform_table, self.platform_leg, self.table, self.frame, self.wall = setup_panda_world(self.robot,
+        self.pddl_blocks, self.platform_table, self.platform_leg, self.table, self.frame, self.wall = setup_panda_world(self, self.robot,
                                                                                                         blocks,
                                                                                                         block_init_xy_poses,
                                                                                                         use_platform=use_platform,
@@ -68,12 +68,12 @@ class PandaAgent:
         # Setup PyBullet instance that only visualizes plan execution. State needs to match the planning instance.
         poses = [b.get_base_link_pose() for b in self.pddl_blocks]
         poses = [Pose(Position(*p[0]), Quaternion(*p[1])) for p in poses]
-        self._execution_client_id = pb_robot.utils.connect(use_gui=True)
+        self._execution_client_id = pb_robot.utils.connect(use_gui=False)
         self.execute()
         pb_robot.utils.set_default_camera()
         self.execution_robot = pb_robot.panda.Panda()
         self.execution_robot.arm.hand.Open()
-        setup_panda_world(self.execution_robot, blocks, poses, use_platform=use_platform, task=task)
+        setup_panda_world(self, self.execution_robot, blocks, poses, use_platform=use_platform, task=task)
         
         # Set up ROS plumbing if using features that require it
         if self.use_vision or self.use_planning_server or self.use_learning_server or real:
@@ -840,34 +840,48 @@ class PandaAgent:
         return resp
 
 
-    def step_simulation(self, T, vis_frames=False, lifeTime=0.1):
-        p.setGravity(0, 0, -10, physicsClientId=self._execution_client_id)
-        p.setGravity(0, 0, -10, physicsClientId=self._planning_client_id)
+    def step_simulation(self, T, vis_frames=False, lifeTime=0.1, planning_only = False):
 
-        q = self.robot.get_joint_positions()
+        if planning_only:
 
-        for _ in range(T):
-            p.stepSimulation(physicsClientId=self._execution_client_id)
-            p.stepSimulation(physicsClientId=self._planning_client_id)
+            p.setGravity(0, 0, -10, physicsClientId=self._planning_client_id)
 
-            self.execute()
-            self.execution_robot.set_joint_positions(self.robot.joints, q)
-            self.plan()
-            self.robot.set_joint_positions(self.robot.joints, q)
+            q = self.robot.get_joint_positions()
 
-            time.sleep(1/2400.)
+            for _ in range(T):
+                p.stepSimulation(physicsClientId=self._planning_client_id)
+                self.plan()
+                self.robot.set_joint_positions(self.robot.joints, q)
 
-            if vis_frames:
-                length = 0.1
-                for pddl_block in self.pddl_blocks:
-                    pos, quat = pddl_block.get_pose()
-                    new_x = transformation([length, 0.0, 0.0], pos, quat)
-                    new_y = transformation([0.0, length, 0.0], pos, quat)
-                    new_z = transformation([0.0, 0.0, length], pos, quat)
+                time.sleep(1 / 2400.)
 
-                    p.addUserDebugLine(pos, new_x, [1,0,0], lineWidth=3, lifeTime=lifeTime, physicsClientId=self._execution_client_id)
-                    p.addUserDebugLine(pos, new_y, [0,1,0], lineWidth=3, lifeTime=lifeTime, physicsClientId=self._execution_client_id)
-                    p.addUserDebugLine(pos, new_z, [0,0,1], lineWidth=3, lifeTime=lifeTime, physicsClientId=self._execution_client_id)
+        else:
+            p.setGravity(0, 0, -10, physicsClientId=self._execution_client_id)
+            p.setGravity(0, 0, -10, physicsClientId=self._planning_client_id)
+
+            q = self.robot.get_joint_positions()
+            for _ in range(T):
+                p.stepSimulation(physicsClientId=self._execution_client_id)
+                p.stepSimulation(physicsClientId=self._planning_client_id)
+
+                self.execute()
+                self.execution_robot.set_joint_positions(self.robot.joints, q)
+                self.plan()
+                self.robot.set_joint_positions(self.robot.joints, q)
+
+                time.sleep(1/2400.)
+
+                if vis_frames:
+                    length = 0.1
+                    for pddl_block in self.pddl_blocks:
+                        pos, quat = pddl_block.get_pose()
+                        new_x = transformation([length, 0.0, 0.0], pos, quat)
+                        new_y = transformation([0.0, length, 0.0], pos, quat)
+                        new_z = transformation([0.0, 0.0, length], pos, quat)
+
+                        p.addUserDebugLine(pos, new_x, [1,0,0], lineWidth=3, lifeTime=lifeTime, physicsClientId=self._execution_client_id)
+                        p.addUserDebugLine(pos, new_y, [0,1,0], lineWidth=3, lifeTime=lifeTime, physicsClientId=self._execution_client_id)
+                        p.addUserDebugLine(pos, new_z, [0,0,1], lineWidth=3, lifeTime=lifeTime, physicsClientId=self._execution_client_id)
 
 
     def simulate_action(self, action, block_ix, T=50, vis_sim=False, vis_placement=False):

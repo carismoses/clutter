@@ -148,7 +148,7 @@ def create_pb_robot_urdf(obj, fname):
     pb_path = os.path.join(pb_urdf_folder, fname)
     return pb_path
 
-def setup_panda_world(robot, blocks, xy_poses=None, use_platform=True, task='stacking'):
+def setup_panda_world(panda_agent, robot, blocks, xy_poses=None, use_platform=True, task='stacking'):
     # Adjust robot position such that measurements match real robot reference frame
     robot_pose = numpy.eye(4)
     robot.set_transform(robot_pose)
@@ -160,10 +160,11 @@ def setup_panda_world(robot, blocks, xy_poses=None, use_platform=True, task='sta
     if not os.path.exists(full_urdf_folder):
         os.makedirs(full_urdf_folder)
 
-    for block in blocks:
-        pb_block_fname = create_pb_robot_urdf(block, block.name + '.urdf')
-        pddl_block = pb_robot.body.createBody(pb_block_fname)
-        pddl_blocks.append(pddl_block)
+    if task == 'stacking':
+        for block in blocks:
+            pb_block_fname = create_pb_robot_urdf(block, block.name + '.urdf')
+            pddl_block = pb_robot.body.createBody(pb_block_fname)
+            pddl_blocks.append(pddl_block)
 
     table_x_offset = 0.2
     floor_path = 'tamp/models/panda_table.urdf'
@@ -238,15 +239,29 @@ def setup_panda_world(robot, blocks, xy_poses=None, use_platform=True, task='sta
                                          xy_pose.pos.z),
                                 xy_pose.orn)
                 block.set_base_link_pose(full_pose)
+
     elif task == 'clutter':
         # Randomly drop blocks from same position
         drop_pos = (0.5, 0.0, 0.5)
         print('Dropping blocks from drop position...')
-        for block in pddl_blocks:
+        # for block in pddl_blocks:
+        #     random_rot_i = numpy.random.choice(len(all_rotations))
+        #     random_rot = all_rotations[random_rot_i]
+        #     block.set_base_link_pose((drop_pos, random_rot.as_quat()))
+
+        pddl_blocks = []
+        for block in blocks:
+            pb_block_fname = create_pb_robot_urdf(block, block.name + '.urdf')
+            pddl_block = pb_robot.body.createBody(pb_block_fname)
+            pddl_blocks.append(pddl_block)
+            # panda_agent.step_simulation(1000, vis_frames=False, planning_only=True)
+        #
+        # for block in pddl_blocks:
             random_rot_i = numpy.random.choice(len(all_rotations))
             random_rot = all_rotations[random_rot_i]
-            block.set_base_link_pose((drop_pos, random_rot.as_quat()))
-        
+            pddl_block.set_base_link_pose((drop_pos, random_rot.as_quat()))
+            panda_agent.step_simulation(1000, vis_frames=False, planning_only=True)
+
         # TODO: If on real robot need way to generate clutter then get block poses
 
     return pddl_blocks, pddl_platform, pddl_leg, pddl_table, pddl_frame, pddl_wall

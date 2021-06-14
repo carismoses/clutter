@@ -39,6 +39,15 @@ def main(args):
                              vis=True,
                              T=2500)
         print(f"\nFinished trial {tx}\n")
+                
+        # disconnect from pybullet
+        from pb_robot.utils import CLIENTS
+        import pb_robot.helper as helper
+        client_keys = list(CLIENTS.keys())
+        for CLIENT in client_keys:
+            del CLIENTS[CLIENT]
+            with helper.HideOutput():
+                p.disconnect(physicsClientId=CLIENT)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

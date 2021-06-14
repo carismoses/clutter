@@ -24,7 +24,7 @@ def main(args):
         alternate_orientations=args.alternate_orientations,
         use_vision=args.use_vision,
         real=args.real,
-        task=args.task)
+        task='stacking')
 
     if args.show_frames:
         agent.step_simulation(T=1, vis_frames=True, lifeTime=0.)
@@ -32,16 +32,15 @@ def main(args):
         p.removeAllUserDebugItems()
 
     for tx in range(0, args.num_trials):
-        print(f"\nStarting trial {tx}\n")
-        if args.task == 'stacking':
-            n_blocks = np.random.randint(2, min(args.num_blocks + 1, 5))
-            tower_blocks = np.random.choice(blocks, n_blocks, replace=False)
-            tower = sample_random_tower(tower_blocks)
-            agent.simulate_tower(tower,
-                                 real=args.real,
-                                 base_xy=(0.5, -0.3),
-                                 vis=True,
-                                 T=2500)
+        print(f"\nStarting trial {tx}\n")    
+        n_blocks = np.random.randint(2, min(args.num_blocks + 1, 5))
+        tower_blocks = np.random.choice(blocks, n_blocks, replace=False)
+        tower = sample_random_tower(tower_blocks)
+        agent.simulate_tower(tower,
+                             real=args.real,
+                             base_xy=(0.5, -0.3),
+                             vis=True,
+                             T=2500)
         print(f"\nFinished trial {tx}\n")
 
 

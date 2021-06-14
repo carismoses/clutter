@@ -27,18 +27,17 @@ def main(args):
             alternate_orientations=args.alternate_orientations,
             use_vision=args.use_vision,
             real=args.real,
-            task=args.task)
+            task='clutter')
 
         if args.show_frames:
             agent.step_simulation(T=1, vis_frames=True, lifeTime=0.)
             input("Start building?")
             p.removeAllUserDebugItems()
 
-        elif args.task == 'clutter':
-            agent.simulate_clutter(real=args.real,
-                                 base_xy=(0.5, -0.3),
-                                 vis=True,
-                                 T=2500)
+        agent.simulate_clutter(real=args.real,
+                             base_xy=(0.5, -0.3),
+                             vis=True,
+                             T=2500)
         print(f"\nFinished trial {tx}\n")
 
 if __name__ == '__main__':

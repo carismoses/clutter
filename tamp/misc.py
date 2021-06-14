@@ -1,12 +1,14 @@
-import numpy
-import pb_robot
+import numpy as np
 import os
 import pickle
 import shutil
 import time
+
+from scipy.spatial.transform import Rotation as R
+import pb_robot
 from block_utils import object_to_urdf, Object, Pose, Position, all_rotations, Quaternion, get_rotated_block
 
-all_rotations = all_rotations()
+all_rotations_list = all_rotations()
 
 class ExecutionFailure(Exception):
     """
@@ -96,10 +98,10 @@ def ExecuteActions(plan, real=False, pause=True, wait=True, prompt=True, obstacl
             # Simulate failures if specified
             if (name in ["pick", "move_free"] and not isinstance(e, pb_robot.vobj.BodyGrasp)
                 and not isinstance(e, pb_robot.vobj.MoveFromTouch)):
-                if numpy.random.rand() < sim_fatal_failure_prob:
+                if np.random.rand() < sim_fatal_failure_prob:
                     raise ExecutionFailure(fatal=True,
                         reason=f"Simulated fatal failure in {e}")
-                elif numpy.random.rand() < sim_recoverable_failure_prob:
+                elif np.random.rand() < sim_recoverable_failure_prob:
                     # if (name in ["place", "place_home", "move_holding"]) or \
                     # (name=="pick" and isinstance(e, pb_robot.vobj.MoveFromTouch)):
                     #     obj_held_arg = obj_held
@@ -148,9 +150,9 @@ def create_pb_robot_urdf(obj, fname):
     pb_path = os.path.join(pb_urdf_folder, fname)
     return pb_path
 
-def setup_panda_world(panda_agent, robot, blocks, xy_poses=None, use_platform=True, task='stacking'):
+def setup_panda_world(panda_agent, robot, blocks, xy_poses=None, use_platform=True, task='stacking', client='both'):
     # Adjust robot position such that measurements match real robot reference frame
-    robot_pose = numpy.eye(4)
+    robot_pose = np.eye(4)
     robot.set_transform(robot_pose)
 
     pddl_blocks = []
@@ -193,7 +195,7 @@ def setup_panda_world(panda_agent, robot, blocks, xy_poses=None, use_platform=Tr
         pddl_platform = pb_robot.body.createBody(pb_platform_fname)
         pddl_leg = pb_robot.body.createBody(pb_leg_fname)
 
-        rotation = pb_robot.geometry.Euler(yaw=numpy.pi/2)
+        rotation = pb_robot.geometry.Euler(yaw=np.pi/2)
         pddl_platform.set_base_link_pose(pb_robot.geometry.multiply(pb_robot.geometry.Pose(euler=rotation), pddl_platform.get_base_link_pose()))
         pddl_leg.set_base_link_pose(pb_robot.geometry.multiply(pb_robot.geometry.Pose(euler=rotation), pddl_leg.get_base_link_pose()))
 
@@ -215,16 +217,16 @@ def setup_panda_world(panda_agent, robot, blocks, xy_poses=None, use_platform=Tr
             print('Placing blocks in storage locations...')
             for ix, block in enumerate(pddl_blocks):
                 x, y = storage_poses[ix]
-                dimensions = numpy.array(block.get_dimensions()).reshape((3, 1))
+                dimensions = np.array(block.get_dimensions()).reshape((3, 1))
                 if ix < 6 and (ix not in [2, 5]):  # Back storage should have long side along y-axis.
-                    for rot in all_rotations:
-                        rot_dims = numpy.abs(rot.as_matrix()@dimensions)[:, 0]
+                    for rot in all_rotations_list:
+                        rot_dims = np.abs(rot.as_matrix()@dimensions)[:, 0]
                         if rot_dims[1] >= rot_dims[0] and rot_dims[1] >= rot_dims[2]:
                             block.set_base_link_pose(((x, y, 0.), rot.as_quat()))
                             break
                 else:  # Side storage should have long side along x-axis.
-                    for rot in all_rotations:
-                        rot_dims = numpy.abs(rot.as_matrix()@dimensions)[:, 0]
+                    for rot in all_rotations_list:
+                        rot_dims = np.abs(rot.as_matrix()@dimensions)[:, 0]
                         if rot_dims[0] >= rot_dims[1] and rot_dims[0] >= rot_dims[2]:
                             block.set_base_link_pose(((x, y, 0.), rot.as_quat()))
                             break
@@ -241,27 +243,41 @@ def setup_panda_world(panda_agent, robot, blocks, xy_poses=None, use_platform=Tr
                 block.set_base_link_pose(full_pose)
 
     elif task == 'clutter':
-        # Randomly drop blocks from same position
-        drop_pos = (0.5, 0.0, 0.5)
-        print('Dropping blocks from drop position...')
-        # for block in pddl_blocks:
-        #     random_rot_i = numpy.random.choice(len(all_rotations))
-        #     random_rot = all_rotations[random_rot_i]
-        #     block.set_base_link_pose((drop_pos, random_rot.as_quat()))
-
-        pddl_blocks = []
-        for block in blocks:
-            pb_block_fname = create_pb_robot_urdf(block, block.name + '.urdf')
-            pddl_block = pb_robot.body.createBody(pb_block_fname)
-            pddl_blocks.append(pddl_block)
-            # panda_agent.step_simulation(1000, vis_frames=False, planning_only=True)
-        #
-        # for block in pddl_blocks:
-            random_rot_i = numpy.random.choice(len(all_rotations))
-            random_rot = all_rotations[random_rot_i]
-            pddl_block.set_base_link_pose((drop_pos, random_rot.as_quat()))
-            panda_agent.step_simulation(1000, vis_frames=False, planning_only=True)
-
+        if client == 'planning':
+            # Randomly drop blocks from same position
+            drop_pos = (0.5, 0.0, 0.5)
+            print('Dropping blocks from drop position...')
+            
+            pddl_blocks = []
+            for block in blocks:
+                pb_block_fname = create_pb_robot_urdf(block, block.name + '.urdf')
+                pddl_block = pb_robot.body.createBody(pb_block_fname)
+                pddl_blocks.append(pddl_block)
+            
+                # select random block orientation
+                random_rot_i = np.random.choice(len(all_rotations_list))
+                random_rot = all_rotations_list[random_rot_i]
+                
+                # perturb orientation slightly
+                perturbed_rot = np.random.normal(loc=random_rot.as_euler('xyz'), scale=1.0, size=3)
+                
+                # set pose at drop position and step sim so it can settle
+                pddl_block.set_base_link_pose((drop_pos, R.from_euler('xyz', perturbed_rot).as_quat()))
+                panda_agent.step_simulation(300, vis_frames=False, client=client)
+                
+        elif client == 'execution':
+            print('Placing blocks at clutter poses')
+            assert (xy_poses is not None)
+            for i, (block, xy_pose) in enumerate(zip(blocks, xy_poses)):
+                pb_block_fname = create_pb_robot_urdf(block, block.name + '.urdf')
+                pddl_block = pb_robot.body.createBody(pb_block_fname)
+                pddl_blocks.append(pddl_block)
+                
+                full_pose = Pose(Position(xy_pose.pos.x,
+                                         xy_pose.pos.y,
+                                         xy_pose.pos.z),
+                                xy_pose.orn)
+                pddl_block.set_base_link_pose(full_pose)
         # TODO: If on real robot need way to generate clutter then get block poses
 
     return pddl_blocks, pddl_platform, pddl_leg, pddl_table, pddl_frame, pddl_wall

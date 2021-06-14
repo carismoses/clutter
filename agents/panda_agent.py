@@ -8,14 +8,13 @@ from copy import deepcopy
 
 from block_utils import get_adversarial_blocks, rotation_group, ZERO_POS, \
                         Quaternion, get_rotated_block, Pose, add_noise, \
-                        Environment, Position, World, all_rotations
+                        Environment, Position, World
 from pddlstream.utils import INF
 from pybullet_utils import transformation
 import tamp.primitives
 from tamp.misc import setup_panda_world, get_pddl_block_lookup, \
-                      print_planning_problem, ExecuteActions, ExecutionFailure, create_pb_robot_urdf
+                      print_planning_problem, ExecuteActions, ExecutionFailure
 from tamp.pddlstream_utils import get_pddlstream_info, pddlstream_plan
-all_rotations = all_rotations()
 
 class PandaAgent:
     def __init__(self, blocks, noise=0.00005, block_init_xy_poses=None,
@@ -47,7 +46,7 @@ class PandaAgent:
         self.alternate_orientations = alternate_orientations
 
         # Setup PyBullet instance to run in the background and handle planning/collision checking.
-        self._planning_client_id = pb_robot.utils.connect(use_gui=True)
+        self._planning_client_id = pb_robot.utils.connect(use_gui=False)
         self.plan()
         pb_robot.utils.set_default_camera()
         self.robot = pb_robot.panda.Panda()
@@ -57,7 +56,8 @@ class PandaAgent:
                                                                                                         blocks,
                                                                                                         block_init_xy_poses,
                                                                                                         use_platform=use_platform,
-                                                                                                        task=task)
+                                                                                                        task=task,
+                                                                                                        client='planning')
         self.fixed = [self.platform_table, self.platform_leg, self.table, self.frame, self.wall]
         
         self.pddl_block_lookup = get_pddl_block_lookup(blocks, self.pddl_blocks)
@@ -68,12 +68,18 @@ class PandaAgent:
         # Setup PyBullet instance that only visualizes plan execution. State needs to match the planning instance.
         poses = [b.get_base_link_pose() for b in self.pddl_blocks]
         poses = [Pose(Position(*p[0]), Quaternion(*p[1])) for p in poses]
-        self._execution_client_id = pb_robot.utils.connect(use_gui=False)
+        self._execution_client_id = pb_robot.utils.connect(use_gui=True)
         self.execute()
         pb_robot.utils.set_default_camera()
         self.execution_robot = pb_robot.panda.Panda()
         self.execution_robot.arm.hand.Open()
-        setup_panda_world(self, self.execution_robot, blocks, poses, use_platform=use_platform, task=task)
+        setup_panda_world(self, 
+                            self.execution_robot, 
+                            blocks, 
+                            poses, 
+                            use_platform=use_platform, 
+                            task=task,
+                            client='execution')
         
         # Set up ROS plumbing if using features that require it
         if self.use_vision or self.use_planning_server or self.use_learning_server or real:
@@ -840,10 +846,8 @@ class PandaAgent:
         return resp
 
 
-    def step_simulation(self, T, vis_frames=False, lifeTime=0.1, planning_only = False):
-
-        if planning_only:
-
+    def step_simulation(self, T, vis_frames=False, lifeTime=0.1, client='both'):
+        if client == 'planning':
             p.setGravity(0, 0, -10, physicsClientId=self._planning_client_id)
 
             q = self.robot.get_joint_positions()
@@ -854,7 +858,17 @@ class PandaAgent:
                 self.robot.set_joint_positions(self.robot.joints, q)
 
                 time.sleep(1 / 2400.)
+        elif client == 'execution':
+            p.setGravity(0, 0, -10, physicsClientId=self._execution_client_id)
 
+            q = self.robot.get_joint_positions()
+
+            for _ in range(T):
+                p.stepSimulation(physicsClientId=self._execution_client_id)
+                self.plan()
+                self.robot.set_joint_positions(self.robot.joints, q)
+
+                time.sleep(1 / 2400.)
         else:
             p.setGravity(0, 0, -10, physicsClientId=self._execution_client_id)
             p.setGravity(0, 0, -10, physicsClientId=self._planning_client_id)

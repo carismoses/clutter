@@ -42,22 +42,15 @@ def main(args):
                                  base_xy=(0.5, -0.3),
                                  vis=True,
                                  T=2500)
-        elif args.task == 'clutter':
-            agent.simulate_clutter(real=args.real,
-                                 base_xy=(0.5, -0.3),
-                                 vis=True,
-                                 T=2500)
         print(f"\nFinished trial {tx}\n")
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--task', default='clutter', choices=['clutter', 'stacking'], type=str)
     parser.add_argument('--plot', action='store_true')
     parser.add_argument('--num-blocks', type=int, default=10)
     parser.add_argument('--num-trials', type=int, default=100)
-    parser.add_argument('--save-tower', action='store_true')
     parser.add_argument('--use-planning-server', action='store_true')
     parser.add_argument('--alternate-orientations', action='store_true')
     parser.add_argument('--use-vision', action='store_true', help='get block poses from AR tags')

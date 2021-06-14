@@ -496,6 +496,8 @@ class PandaAgent:
                 print(f"Cleaning up {len(self.moved_blocks)} blocks.")
                 reset_success, _, reset_stable, num_reset_success, reset_fatal = \
                     self.plan_and_execute(planning_prob, real, T, stack=False, start_idx=num_reset_success)
+                if not reset_success:
+                    break
 
         except Exception as e:
             print("Planning/execution failed during clutter cleanup.")
@@ -582,14 +584,19 @@ class PandaAgent:
     def plan_and_execute(self, planning_prob, real=False, T=2500, stack=True, start_idx=0, ignore_resets=False):
         """
         Requests a PDDLStream plan from a planning server and executes the resulting plan
+        Parameters:
+            planning_prob : Planning problem 
+            real : Flag for whether we are executing on the real panda robot
+            T : Number of time steps to step simulator to see if tower has fallen
+            stack : Flag for whether we are building a tower (True) or resetting a tower (False)
+            start_idx : Start index of planning (for recovering from partial plans)
+            ignore_resets : Flag for whether to stop after resets
         Returns:
             success : Flag for whether the plan execution succeeded
             stack_stable : Flag for whether stacking a stable tower was successful
             reset_stable : Flag for whether resetting a tower was successful
             num_success : Progress (in number of steps) of successful tasks
             fatal : Flag for whether the error was fatal (True) or recoverable (False)
-            start_idx : Start index of planning (for recovering from partial plans)
-            ignore_resets : Flag for whether to stop after resets
         """
         # Initialize variables
         num_success = start_idx
@@ -654,6 +661,7 @@ class PandaAgent:
                     if base == self.table:
                         blk_pose = pb_robot.vobj.BodyPose(blk, pose)
                         if (not stack or num_success >= num_steps/2) and self.alternate_orientations:
+                            # condition for returning block to home position
                             init += [("Reset",)]
                             goal_terms.append(("AtHome", blk))
                         else:
@@ -896,104 +904,6 @@ class PandaAgent:
                         p.addUserDebugLine(pos, new_x, [1,0,0], lineWidth=3, lifeTime=lifeTime, physicsClientId=self._execution_client_id)
                         p.addUserDebugLine(pos, new_y, [0,1,0], lineWidth=3, lifeTime=lifeTime, physicsClientId=self._execution_client_id)
                         p.addUserDebugLine(pos, new_z, [0,0,1], lineWidth=3, lifeTime=lifeTime, physicsClientId=self._execution_client_id)
-
-
-    def simulate_action(self, action, block_ix, T=50, vis_sim=False, vis_placement=False):
-        """
-        Perform the given action to with the given block. An observation
-        should be returned in the reference frame of the platform.
-        :param action: Place action which describes the relative pose of the block to the platform surface.
-        :param real_block: Belief representation of the block to perform the action on.
-        :param T: How many timesteps to simulate the block falling for.
-        :param vis_sim: Ununsed.
-        :return: (action, T, end_pose) End pose should be TODO: what frame?
-        
-        TODO: Not sure if this method works at the moment...
-        """
-        assert(self.platform_table is not None)
-        real_block = self.belief_blocks[block_ix]
-        pddl_block = self.pddl_blocks[block_ix]
-
-        original_pose = pddl_block.get_base_link_pose()
-
-        # Set up the PDDLStream problem for the placing the given block on the
-        # platform with the specified action.
-        self.pddl_info = get_pddlstream_info(self.robot,
-                                             self.fixed,
-                                             self.pddl_blocks,
-                                             add_slanted_grasps=False,
-                                             approach_frame='gripper',
-                                             use_vision=self.use_vision)
-        init = self._get_initial_pddl_state()
-
-        #  Figure out the correct transformation matrix based on the action.
-        real_block.set_pose(Pose(ZERO_POS, Quaternion(*action.rot.as_quat())))
-        rotated_block = get_rotated_block(real_block)
-
-        x = action.pos[0]
-        y = action.pos[1]
-        z = self.platform_table.get_dimensions()[2]/2. + rotated_block.dimensions[2]/2 #+ 1e-5
-        tform = numpy.array([[1., 0., 0., x],
-                             [0., 1., 0., y],
-                             [0., 0., 1., z],
-                             [0., 0., 0., 1.]])
-        tform[0:3, 0:3] = action.rot.as_matrix()
-
-        # Code to visualize where the block will be placed.
-        if vis_placement:
-            surface_tform = pb_robot.geometry.tform_from_pose(self.platform_table.get_base_link_pose())
-            body_tform = surface_tform@tform
-            length, lifeTime = 0.2, 0.0
-
-            pos, quat = pb_robot.geometry.pose_from_tform(body_tform)
-            new_x = transformation([length, 0.0, 0.0], pos, quat)
-            new_y = transformation([0.0, length, 0.0], pos, quat)
-            new_z = transformation([0.0, 0.0, length], pos, quat)
-
-            p.addUserDebugLine(pos, new_x, [1,0,0], lifeTime=lifeTime)
-            p.addUserDebugLine(pos, new_y, [0,1,0], lifeTime=lifeTime)
-            p.addUserDebugLine(pos, new_z, [0,0,1], lifeTime=lifeTime)
-
-        init += [('RelPose', pddl_block, self.platform_table, tform)]
-        goal = ('On', pddl_block, self.platform_table)
-
-        # Solve the PDDLStream problem.
-        print('Init:', init)
-        print('Goal:', goal)
-        self.plan_and_execute(init, goal, search_sample_ratio=1000)
-
-        # Execute the action.
-        # TODO: Check gravity compensation in the arm.
-
-        self.step_simulation(T)
-        end_pose = self._get_observed_pose(pddl_block, action)
-        observation = (action, T, end_pose)
-        self.step_simulation(500-T)
-
-        # Put block back in original position.
-
-        # TODO: Check if block is on the table or platform to start.
-        self.pddl_info = get_pddlstream_info(self.robot,
-                                             self.fixed,
-                                             self.pddl_blocks,
-                                             add_slanted_grasps=True,
-                                             approach_frame='gripper',
-                                             use_vision=self.use_vision)
-
-        init = self._get_initial_pddl_state()
-        goal_pose = pb_robot.vobj.BodyPose(pddl_block, original_pose)
-        init += [('Pose', pddl_block, goal_pose),
-                 ('Supported', pddl_block, goal_pose, self.table, self.table_pose)]
-        goal = ('and', ('AtPose', pddl_block, goal_pose),
-                       ('On', pddl_block, self.table))
-
-        # Solve the PDDLStream problem.
-        print('Init:', init)
-        print('Goal:', goal)
-        success = self.plan_and_execute(init, goal, max_time=100., search_sample_ratio=1000)
-        return observation
-
-
 
 class PandaClientAgent:
     """

@@ -14,6 +14,7 @@ import pb_robot
 def main(args):
     NOISE=0.00005
 
+    contact_plot_data = [[], []]
     for tx in range(0, args.num_trials):
         print(f"\nStarting trial {tx}\n")
         
@@ -28,6 +29,9 @@ def main(args):
             use_vision=args.use_vision,
             real=args.real,
             task='clutter')
+
+        contact_plot_data[0].append(agent.contact_data[0])
+        contact_plot_data[1].append(agent.contact_data[1])
 
         if args.show_frames:
             agent.step_simulation(T=1, vis_frames=True, lifeTime=0.)
@@ -48,6 +52,11 @@ def main(args):
             del CLIENTS[CLIENT]
             with helper.HideOutput():
                 p.disconnect(physicsClientId=CLIENT)
+
+    plt.plot(contact_plot_data[1], contact_plot_data[0])
+    plt.axis([0, 15, 0, 1])
+    plt.ylabel('Success')
+    plt.show()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

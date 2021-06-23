@@ -1,9 +1,11 @@
 import sys
 import time
 import numpy
+import matplotlib.pyplot as plt
 import pb_robot
 import pyquaternion
 import pybullet as p
+import random
 from copy import deepcopy
 
 from block_utils import get_adversarial_blocks, rotation_group, ZERO_POS, \
@@ -68,7 +70,7 @@ class PandaAgent:
         # Setup PyBullet instance that only visualizes plan execution. State needs to match the planning instance.
         poses = [b.get_base_link_pose() for b in self.pddl_blocks]
         poses = [Pose(Position(*p[0]), Quaternion(*p[1])) for p in poses]
-        self._execution_client_id = pb_robot.utils.connect(use_gui=True)
+        self._execution_client_id = pb_robot.utils.connect(use_gui=False)
         self.execute()
         pb_robot.utils.set_default_camera()
         self.execution_robot = pb_robot.panda.Panda()
@@ -80,6 +82,7 @@ class PandaAgent:
                             use_platform=use_platform, 
                             task=task,
                             client='execution')
+        self.contact_data = [[], []]
         
         # Set up ROS plumbing if using features that require it
         if self.use_vision or self.use_planning_server or self.use_learning_server or real:
@@ -112,7 +115,6 @@ class PandaAgent:
             rospy.wait_for_service('get_block_poses_wrist')
             self._get_block_poses_world = rospy.ServiceProxy('get_block_poses_world', GetBlockPosesWorld)
             self._get_block_poses_wrist = rospy.ServiceProxy('get_block_poses_wrist', GetBlockPosesWrist)
-
         # Start ROS clients and servers as needed
         self.last_obj_held = None
         if self.use_planning_server:
@@ -422,11 +424,9 @@ class PandaAgent:
         print("Resetting blocks...")
         print("Moved Blocks:", self.moved_blocks)
         
-        # Define block order by sorting by height
-        current_poses = [b.get_base_link_pose() for b in self.pddl_blocks]
-        block_ixs = range(len(self.pddl_blocks))
-        block_ixs = sorted(block_ixs, key=lambda ix: current_poses[ix][0][2], reverse=True)
-                
+        # Define block order by random shuffle
+        block_ixs = numpy.arange(len(self.pddl_blocks))
+        numpy.random.shuffle(block_ixs)
         # Build the initial data structures
         if self.use_planning_server:
             from stacking_ros.msg import BodyInfo
@@ -486,6 +486,10 @@ class PandaAgent:
             # TODO: Return arm to home position to help with vision.
         
         self.moved_blocks = self.pddl_blocks
+
+        # for block in self.pddl_blocks:
+        #     print('pose is ...', self.orig_block_poses)
+
         planning_prob = self.build_reset_problem()
         reset_fatal = False
         num_reset_success = 0
@@ -604,6 +608,8 @@ class PandaAgent:
         reset_stable = False
         planning_active = True
 
+
+        successes = []
         if self.use_planning_server:
             # Send a reset request to the planning server
             ros_req = planning_prob
@@ -649,6 +655,39 @@ class PandaAgent:
                     base, blk, pose = pddl_problems[num_success]
                     query_block = blk
 
+                    self.step_simulation(T, vis_frames=False)
+
+                    contact_points = []
+                    for blkB in self.pddl_blocks:
+                        contact_points += p.getContactPoints(blk.id, blkB.id)
+                    # closest_points = []
+                    # for blkB in self.pddl_blocks:
+                    #     closest_points += p.getClosestPoints(blk.id, blkB.id, 0.1)
+
+                    print('contact points are:', contact_points)
+                    print(len(contact_points))
+                    # print('closest points are:', closest_points)
+
+                    p.changeVisualShape(blk.id, blk.base_link, rgbaColor = [0, 0, 0, 1])
+                    view_matrix = p.computeViewMatrixFromYawPitchRoll(distance=1.0,
+                                                                      yaw=90,
+                                                                      pitch=-45,
+                                                                      roll=0,
+                                                                      upAxisIndex=2,
+                                                                      cameraTargetPosition=(0., 0., 0.5))
+                    aspect = 100. / 190.
+                    nearPlane = 0.01
+                    farPlane = 10
+                    fov = 90
+                    projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, nearPlane, farPlane)
+                    image_data = p.getCameraImage(400, 400, shadow=1, viewMatrix=view_matrix,
+                                                  projectionMatrix=projection_matrix)
+                    w, h, im = image_data[:3]
+                    np_im = numpy.array(im, dtype=numpy.uint8).reshape(h, w, 4)[:, :, 0:3]
+                    plt.imshow(numpy.array(np_im))
+                    plt.ion()
+                    plt.show()
+
                     self._add_text('Planning block placement')
                     self.plan()
                     saved_world = pb_robot.utils.WorldSaver()
@@ -687,13 +726,16 @@ class PandaAgent:
                                                  max_time=INF)
                     if plan is None:
                         print("\nFailed to plan\n")
+                        self.contact_data[0].append(len(contact_points))
+                        self.contact_data[1].append(0)
                         fatal = False
                         return False, stack_stable, reset_stable, num_success, fatal
                     saved_world.restore()
 
                 print("\nGot plan:")
                 print(plan)
-
+                self.contact_data[0].append(len(contact_points))
+                self.contact_data[1].append(1)
                 # Once we have a plan, execute it
                 obstacles = [f for f in self.fixed if f is not None]
                 if not self.use_planning_server:

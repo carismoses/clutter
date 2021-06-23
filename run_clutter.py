@@ -30,8 +30,8 @@ def main(args):
             real=args.real,
             task='clutter')
 
-        contact_plot_data[0].append(agent.contact_data[0])
-        contact_plot_data[1].append(agent.contact_data[1])
+        contact_plot_data[0]+= agent.contact_data[0]
+        contact_plot_data[1] += agent.contact_data[1]
 
         if args.show_frames:
             agent.step_simulation(T=1, vis_frames=True, lifeTime=0.)

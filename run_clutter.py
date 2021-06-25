@@ -15,6 +15,7 @@ def main(args):
     NOISE=0.00005
 
     contact_plot_data = [[], []]
+    closest_plot_data = [[], []]
     for tx in range(0, args.num_trials):
         print(f"\nStarting trial {tx}\n")
         
@@ -30,9 +31,6 @@ def main(args):
             real=args.real,
             task='clutter')
 
-        contact_plot_data[0]+= agent.contact_data[0]
-        contact_plot_data[1] += agent.contact_data[1]
-
         if args.show_frames:
             agent.step_simulation(T=1, vis_frames=True, lifeTime=0.)
             input("Start building?")
@@ -42,6 +40,13 @@ def main(args):
                              base_xy=(0.5, -0.3),
                              vis=True,
                              T=2500)
+
+        print("agent data", agent.contact_data)
+        contact_plot_data[0] += agent.contact_data[0]
+        contact_plot_data[1] += agent.contact_data[1]
+        closest_plot_data[0] += agent.closest_data[0]
+        closest_plot_data[1] += agent.closest_data[1]
+
         print(f"\nFinished trial {tx}\n")
                 
         # disconnect from pybullet
@@ -52,11 +57,14 @@ def main(args):
             del CLIENTS[CLIENT]
             with helper.HideOutput():
                 p.disconnect(physicsClientId=CLIENT)
-
-    plt.plot(contact_plot_data[1], contact_plot_data[0])
-    plt.axis([0, 15, 0, 1])
+    print("contact_plot_data", contact_plot_data)
+    fig, axs = plt.subplots(2)
+    axs[0].plot(contact_plot_data[1], contact_plot_data[0], 'rs')
+    axs[1].plot(closest_plot_data[0], closest_plot_data[1], 'bs')
+    plt.axis([-0.5, 10, -0.5, 1.5])
     plt.ylabel('Success')
     plt.show()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -83,6 +83,7 @@ class PandaAgent:
                             task=task,
                             client='execution')
         self.contact_data = [[], []]
+        self.closest_data = [[], []]
         
         # Set up ROS plumbing if using features that require it
         if self.use_vision or self.use_planning_server or self.use_learning_server or real:
@@ -660,9 +661,9 @@ class PandaAgent:
                     contact_points = []
                     for blkB in self.pddl_blocks:
                         contact_points += p.getContactPoints(blk.id, blkB.id)
-                    # closest_points = []
-                    # for blkB in self.pddl_blocks:
-                    #     closest_points += p.getClosestPoints(blk.id, blkB.id, 0.1)
+                    closest_points = []
+                    for blkB in self.pddl_blocks:
+                        closest_points += p.getClosestPoints(blk.id, blkB.id, 0.1)
 
                     print('contact points are:', contact_points)
                     print(len(contact_points))
@@ -684,9 +685,9 @@ class PandaAgent:
                                                   projectionMatrix=projection_matrix)
                     w, h, im = image_data[:3]
                     np_im = numpy.array(im, dtype=numpy.uint8).reshape(h, w, 4)[:, :, 0:3]
-                    plt.imshow(numpy.array(np_im))
-                    plt.ion()
-                    plt.show()
+                    # plt.imshow(numpy.array(np_im))
+                    # plt.ion()
+                    # plt.show()
 
                     self._add_text('Planning block placement')
                     self.plan()
@@ -726,16 +727,22 @@ class PandaAgent:
                                                  max_time=INF)
                     if plan is None:
                         print("\nFailed to plan\n")
+                        print("before length", contact_points)
                         self.contact_data[0].append(len(contact_points))
                         self.contact_data[1].append(0)
+                        self.closest_data[0].append(len(closest_points))
+                        self.closest_data[1].append(1)
                         fatal = False
                         return False, stack_stable, reset_stable, num_success, fatal
                     saved_world.restore()
 
                 print("\nGot plan:")
                 print(plan)
+                print("before length", contact_points)
                 self.contact_data[0].append(len(contact_points))
                 self.contact_data[1].append(1)
+                self.closest_data[0].append(len(closest_points))
+                self.closest_data[1].append(1)
                 # Once we have a plan, execute it
                 obstacles = [f for f in self.fixed if f is not None]
                 if not self.use_planning_server:

@@ -14,8 +14,11 @@ import pb_robot
 def main(args):
     NOISE=0.00005
 
-    contact_plot_data = [[], []]
-    closest_plot_data = [[], []]
+    successful_contact_plot_data = []
+    failed_contact_plot_data = []
+    successful_closest_plot_data = []
+    failed_closest_plot_data = []
+
     for tx in range(0, args.num_trials):
         print(f"\nStarting trial {tx}\n")
         
@@ -41,11 +44,10 @@ def main(args):
                              vis=True,
                              T=2500)
 
-        print("agent data", agent.contact_data)
-        contact_plot_data[0] += agent.contact_data[0]
-        contact_plot_data[1] += agent.contact_data[1]
-        closest_plot_data[0] += agent.closest_data[0]
-        closest_plot_data[1] += agent.closest_data[1]
+        successful_contact_plot_data += agent.successful_contact_data
+        failed_contact_plot_data += agent.failed_contact_data
+        successful_closest_plot_data += agent.successful_closest_data
+        failed_closest_plot_data += agent.failed_closest_data
 
         print(f"\nFinished trial {tx}\n")
                 
@@ -57,12 +59,18 @@ def main(args):
             del CLIENTS[CLIENT]
             with helper.HideOutput():
                 p.disconnect(physicsClientId=CLIENT)
-    print("contact_plot_data", contact_plot_data)
-    fig, axs = plt.subplots(2)
-    axs[0].plot(contact_plot_data[1], contact_plot_data[0], 'rs')
-    axs[1].plot(closest_plot_data[0], closest_plot_data[1], 'bs')
-    plt.axis([-0.5, 10, -0.5, 1.5])
-    plt.ylabel('Success')
+
+    plt.title('Successful Data Points')
+    print('x success is', successful_contact_plot_data)
+    plt.ylabel('Frequency')
+    plt.xlabel('Contact points')
+    plt.hist(successful_contact_plot_data, bins=10)
+    plt.figure()
+    plt.title('Failed Data Points')
+    print('x failed is', failed_contact_plot_data)
+    plt.ylabel('Frequency')
+    plt.xlabel('Contact points')
+    plt.hist(failed_contact_plot_data, bins=10)
     plt.show()
 
 

@@ -82,8 +82,10 @@ class PandaAgent:
                             use_platform=use_platform, 
                             task=task,
                             client='execution')
-        self.contact_data = [[], []]
-        self.closest_data = [[], []]
+        self.successful_contact_data = []
+        self.failed_contact_data = []
+        self.successful_closest_data = []
+        self.failed_closest_data =[]
         
         # Set up ROS plumbing if using features that require it
         if self.use_vision or self.use_planning_server or self.use_learning_server or real:
@@ -491,22 +493,30 @@ class PandaAgent:
         # for block in self.pddl_blocks:
         #     print('pose is ...', self.orig_block_poses)
 
-        planning_prob = self.build_reset_problem()
+        planning_probs = self.build_reset_problem()
         reset_fatal = False
         num_reset_success = 0
         reset_success = False
         
-        try:
-            while num_reset_success < len(self.moved_blocks) and not reset_fatal:
-                print(f"Cleaning up {len(self.moved_blocks)} blocks.")
-                reset_success, _, reset_stable, num_reset_success, reset_fatal = \
-                    self.plan_and_execute(planning_prob, real, T, stack=False, start_idx=num_reset_success)
-                if not reset_success:
-                    break
+        # try:
+        for planning_prob in planning_probs:
+            print('planning problem', planning_prob)
+            print('result of plan is',
+                  self.plan_and_execute([planning_prob], real, T, stack=False, start_idx=num_reset_success))
+            reset_success, _, reset_stable, num_reset_success, reset_fatal = \
+                self.plan_and_execute([planning_prob], real, T, stack=False, start_idx=num_reset_success)
 
-        except Exception as e:
-            print("Planning/execution failed during clutter cleanup.")
-            print(e)
+
+            # while num_reset_success < len(self.moved_blocks) and not reset_fatal:
+            #     print(f"Cleaning up {len(self.moved_blocks)} blocks.")
+
+            #         self.plan_and_execute(planning_prob, real, T, stack=False, start_idx=num_reset_success)
+            #     if not reset_success:
+            #         break
+
+        # except Exception as e:
+        #     print("Planning/execution failed during clutter cleanup.")
+        #     print(e)
 
         # Return the final planning state
         return reset_success
@@ -622,7 +632,8 @@ class PandaAgent:
             pddl_problems = planning_prob
             num_steps = len(pddl_problems)
 
-        while num_success < num_steps:
+        # while num_success < num_steps:
+        for problem in pddl_problems:
             try:
                 # PLANNING
                 # If using planning server, request a plan from the server using ROS
@@ -728,10 +739,9 @@ class PandaAgent:
                     if plan is None:
                         print("\nFailed to plan\n")
                         print("before length", contact_points)
-                        self.contact_data[0].append(len(contact_points))
-                        self.contact_data[1].append(0)
-                        self.closest_data[0].append(len(closest_points))
-                        self.closest_data[1].append(1)
+                        self.failed_contact_data.append(len(contact_points))
+                        self.failed_closest_data.append(len(closest_points))
+
                         fatal = False
                         return False, stack_stable, reset_stable, num_success, fatal
                     saved_world.restore()
@@ -739,10 +749,9 @@ class PandaAgent:
                 print("\nGot plan:")
                 print(plan)
                 print("before length", contact_points)
-                self.contact_data[0].append(len(contact_points))
-                self.contact_data[1].append(1)
-                self.closest_data[0].append(len(closest_points))
-                self.closest_data[1].append(1)
+                self.successful_contact_data.append(len(contact_points))
+                self.successful_closest_data.append(len(closest_points))
+
                 # Once we have a plan, execute it
                 obstacles = [f for f in self.fixed if f is not None]
                 if not self.use_planning_server:

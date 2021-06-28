@@ -60,6 +60,9 @@ def main(args):
             with helper.HideOutput():
                 p.disconnect(physicsClientId=CLIENT)
 
+    import matplotlib 
+    matplotlib.use("TkAgg")
+    
     plt.title('Successful Data Points')
     print('x success is', successful_contact_plot_data)
     plt.ylabel('Frequency')

@@ -4,7 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import pybullet as p
-
+import os
+from datetime import datetime
 from agents.panda_agent import PandaAgent
 from learning.domains.towers.generate_tower_training_data import sample_random_tower
 from block_utils import Object, Dimensions, Position, Color, get_adversarial_blocks
@@ -60,20 +61,33 @@ def main(args):
             with helper.HideOutput():
                 p.disconnect(physicsClientId=CLIENT)
 
-    import matplotlib 
-    matplotlib.use("TkAgg")
-    
+    # import matplotlib 
+    # matplotlib.use("TkAgg")
+    plt.figure()
     plt.title('Successful Data Points')
-    print('x success is', successful_contact_plot_data)
     plt.ylabel('Frequency')
     plt.xlabel('Contact points')
-    plt.hist(successful_contact_plot_data, bins=10)
+    plt.hist(successful_contact_plot_data, bins=max(successful_contact_plot_data))
+    if not os.path.exists('clutter_images/graphs'):
+        os.makedirs('clutter_images/graphs')
+    plt.savefig('clutter_images/graphs/successes-histogram')
+
     plt.figure()
     plt.title('Failed Data Points')
-    print('x failed is', failed_contact_plot_data)
     plt.ylabel('Frequency')
     plt.xlabel('Contact points')
-    plt.hist(failed_contact_plot_data, bins=10)
+    plt.hist(failed_contact_plot_data, bins=max(failed_contact_plot_data))
+    plt.savefig('clutter_images/graphs/failures-histogram')
+
+    plt.figure()
+    plt.title('Closest points vs contact points')
+    plt.xlabel('Contact points')
+    plt.ylabel('Closest points')
+    plt.plot(successful_contact_plot_data, successful_closest_plot_data, 'bo', label='successes')
+    plt.plot(failed_contact_plot_data, failed_closest_plot_data, 'ro', label='failures')
+    plt.legend()
+    plt.savefig('clutter_images/graphs/contact-vs-closest')
+
     plt.show()
 
 

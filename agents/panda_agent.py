@@ -6,6 +6,8 @@ import pb_robot
 import pyquaternion
 import pybullet as p
 import random
+import os
+from datetime import datetime
 from copy import deepcopy
 
 from block_utils import get_adversarial_blocks, rotation_group, ZERO_POS, \
@@ -322,6 +324,23 @@ class PandaAgent:
             print('planning problem', planning_prob)
             self.plan_and_execute([planning_prob], real, T)
 
+    def save_clutter_image(self, np_im, state, contact_points):
+        fig, ax = plt.subplots()
+        ax.imshow(numpy.array(np_im))
+
+        if state == 'success':
+            if not os.path.exists('clutter_images/successes/'+str(contact_points)):
+                os.makedirs('clutter_images/successes/'+str(contact_points))
+            timestamp = datetime.now().strftime("%d-%m-%H-%M-%S")
+            fig.savefig('clutter_images/successes/' + str(contact_points) + '/' + timestamp)
+            plt.close(fig)
+
+        if state == 'failure':
+            if not os.path.exists('clutter_images/failures/' + str(contact_points)):
+                os.makedirs('clutter_images/failures/' + str(contact_points))
+            timestamp = datetime.now().strftime("%d-%m-%H-%M-%S")
+            fig.savefig('clutter_images/failures/' + str(contact_points) + '/' + timestamp)
+            plt.close(fig)
 
     def plan_and_execute(self, planning_prob, real=False, T=2500):
         """
@@ -343,15 +362,26 @@ class PandaAgent:
 
         contact_points = []
         for blkB in self.pddl_blocks:
-            contact_points += p.getContactPoints(blk.id, blkB.id)
-        closest_points = []
+            if blkB.id != blk.id:
+                contact_points += p.getContactPoints(blk.id, blkB.id)
+        closest_distance = []
         for blkB in self.pddl_blocks:
-            closest_points += p.getClosestPoints(blk.id, blkB.id, 0.1)
+            if p.getClosestPoints(blk.id, blkB.id, 1) == ():  # if no closest distance is found
+                closest_distance.append(1)
+            elif blkB.id != blk.id:
+                distance = p.getClosestPoints(blk.id, blkB.id, 1)[0][8]
+                print('closest point is', p.getClosestPoints(blk.id, blkB.id, 1))
+                closest_distance.append(distance)
 
+        if len(closest_distance) == 0:  #if closest distance is empty, return 1m
+            closest_distance = [1]
+
+        p.getClosestPoints(blk.id, blkB.id, 1)
         print('contact points are:', contact_points)
         print(len(contact_points))
         # print('closest points are:', closest_points)
-
+        original_colour = p.getVisualShapeData(blk.id)[0][7]
+        print('colour', original_colour)
         p.changeVisualShape(blk.id, blk.base_link, rgbaColor = [0, 0, 0, 1])
         view_matrix = p.computeViewMatrixFromYawPitchRoll(distance=1.0,
                                                           yaw=90,
@@ -368,7 +398,7 @@ class PandaAgent:
                                       projectionMatrix=projection_matrix)
         w, h, im = image_data[:3]
         np_im = numpy.array(im, dtype=numpy.uint8).reshape(h, w, 4)[:, :, 0:3]
-        # plt.imshow(numpy.array(np_im))
+
         # plt.ion()
         # plt.show()
 
@@ -401,7 +431,9 @@ class PandaAgent:
             print("\nFailed to plan\n")
             print("before length", contact_points)
             self.failed_contact_data.append(len(contact_points))
-            self.failed_closest_data.append(len(closest_points))
+            self.failed_closest_data.append(min(closest_distance))
+            self.save_clutter_image(np_im, 'failure', len(contact_points))
+            p.changeVisualShape(blk.id, blk.base_link, rgbaColor=original_colour)
             return
         saved_world.restore() # unsure about this line
 
@@ -409,7 +441,9 @@ class PandaAgent:
         print(plan)
         print("before length", contact_points)
         self.successful_contact_data.append(len(contact_points))
-        self.successful_closest_data.append(len(closest_points))
+        self.successful_closest_data.append(min(closest_distance))
+        self.save_clutter_image(np_im, 'success', len(contact_points))
+        p.changeVisualShape(blk.id, blk.base_link, rgbaColor=original_colour)
 
         # Once we have a plan, execute it
         obstacles = [f for f in self.fixed if f is not None]

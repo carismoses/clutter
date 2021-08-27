@@ -39,17 +39,40 @@ def get_grasp_gen(robot, add_slanted_grasps=True, add_orthogonal_grasps=True):
 
     return gen
 
+def get_push_grasp_gen(robot):
+    # I opt to use TSR to define grasp sets but you could replace this
+    # with your favorite grasp generator
+    def gen(body):
+        # Note, add_slanted_grasps should be True when we're using the platform.
+        grasp_tsr = pb_robot.tsrs.panda_box.grasp(body,
+            add_slanted_grasps=add_slanted_grasps, add_orthogonal_grasps=add_orthogonal_grasps)
+        grasps = []
+
+        # np.random.shuffle(grasp_tsr)
+        for sampled_tsr in grasp_tsr:
+            grasp_worldF = sampled_tsr.sample()
+            grasp_objF = np.dot(np.linalg.inv(body.get_base_link_transform()), grasp_worldF)
+            body_grasp = pb_robot.vobj.BodyGrasp(body, grasp_objF, robot.arm)
+            grasps.append((body_grasp,))
+            # yield (body_grasp,)
+        return grasps
+
+    # def gen(body):
+    #     dims = body.get_dimensions()
+
+
+    return gen
 
 def get_stable_gen_table(fixed=[]):
     def gen(body, surface, surface_pos, protation=None):
         """
-        Generate a random pose (possibly rotated) on a surface. 
+        Generate a random pose (possibly rotated) on a surface.
         Rotation can be specified for debugging.
 
-        These poses are useful for regrasping. 
+        These poses are useful for regrasping.
         Poses are more useful for grasping if they are upright.
         """
-        # 
+        #
         dims = body.get_dimensions()
 
         poses = []
@@ -81,10 +104,10 @@ def get_stable_gen_table(fixed=[]):
 def get_stable_gen_home(home_pose, fixed=[]):
     def gen(body, surface, surface_pos, protation=None):
         """
-        Generate a random pose (possibly rotated) at a specified home pose. 
+        Generate a random pose (possibly rotated) at a specified home pose.
         Rotation can be specified for debugging.
 
-        These poses are useful for replacing blocks at their home position, 
+        These poses are useful for replacing blocks at their home position,
         but not necessarily at their home orientation.
         """
         dims = body.get_dimensions()
@@ -132,7 +155,7 @@ def get_stable_gen_block(fixed=[]):
     return fn
 
 
-def get_ik_fn(robot, fixed=[], num_attempts=4, approach_frame='gripper', backoff_frame='global', use_wrist_camera=False):
+def get_ik_fn(robot, fixed=[], num_attempts=4, approach_frame='gripper', backoff_frame='global', use_wrist_camera=False, is_push=True):
     def fn(body, pose, grasp, return_grasp_q=False, check_robust=False):
         obstacles = fixed + [body]
         obj_worldF = pb_robot.geometry.tform_from_pose(pose.pose)

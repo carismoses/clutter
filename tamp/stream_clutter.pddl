@@ -23,12 +23,24 @@
     :domain (Graspable ?o)
     :outputs (?g)
     :certified (Grasp ?o ?g)
-  ) 
+  )
+  (:stream sample-push-grasp
+    :inputs (?o)
+    :domain (Graspable ?o)
+    :outputs (?pg)
+    :certified (PushGrasp ?o ?pg)
+  )
   (:stream pick-inverse-kinematics
     :inputs (?o ?p ?g)
     :domain (and (Pose ?o ?p) (Grasp ?o ?g))
     :outputs (?q1 ?q2 ?t)
     :certified (and (EndConf ?q1) (StartConf ?q2) (PickGraspKin ?o ?g ?q2) (PickKin ?o ?p ?g ?q1 ?q2 ?t))
+  )
+  (:stream push-inverse-kinematics
+    :inputs (?o ?p1 ?pg)
+    :domain (and (Pose ?o ?p) (PushGrasp ?o ?pg))
+    :outputs (?p2 ?q1 ?q2 ?t)
+    :certified (and (EndConf ?q1) (StartConf ?q2) (PickGraspKin ?o ?pg ?q2) (PushKin ?o ?p1 ?p2 ?pg ?q1 ?q2 ?t))
   )
   (:stream place-inverse-kinematics
     :inputs (?o ?p ?g)
@@ -49,5 +61,5 @@
     :fluents (AtPose)
     :outputs (?t)
     :certified (HoldingMotion ?q1 ?t ?q2 ?o ?g)
-  )   
+  )
 )

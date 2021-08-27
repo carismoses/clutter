@@ -147,7 +147,7 @@
 ; Push Block ?o at Pose ?p1 on Object (Block or Table) ?o2 which is at Pose ?p2
   (:action push
     :parameters (?o1 ?p1 ?o2 ?pp ?q1 ?q2 ?t)
-    :precondition (and (PickKin ?o1 ?p1 ?pp ?q1 ?q2 ?t)
+    :precondition (and (PickKin ?o1 ?p1 ?p2 ?pp ?q1 ?q2 ?t)
                        (AtPose ?o1 ?p1)
                        (HandEmpty)
                        (AtConf ?q1)
@@ -161,7 +161,6 @@
                  (AtConf ?q2)
                  (not (AtConf ?q1))
                  (not (AtPose ?o1 ?p1))
-                 (not (HandEmpty))
                  (not (AtHome ?o1)))
   )
 
